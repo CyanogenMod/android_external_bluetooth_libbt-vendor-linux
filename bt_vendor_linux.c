@@ -40,7 +40,7 @@ static int bt_vendor_fd = -1;
 
 static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *local_bdaddr)
 {
-	ALOGI("init");
+	ALOGI("%s", __func__);
 
 	if (p_cb == NULL) {
 		ALOGE("init failed with no user callbacks!");
@@ -59,6 +59,8 @@ static int bt_vendor_open(void *param)
 	int (*fd_array)[] = (int (*) []) param;
 	struct sockaddr_hci addr;
 	int fd;
+
+	ALOGI("%s", __func__);
 
 	fd = socket(AF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
 	if (fd < 0) {
@@ -84,6 +86,8 @@ static int bt_vendor_open(void *param)
 
 	bt_vendor_fd = fd;
 
+	ALOGI("%s returning %d", __func__, bt_vendor_fd);
+
 	return 1;
 }
 
@@ -99,7 +103,7 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 {
 	int retval = 0;
 
-	ALOGV("op %d", opcode);
+	ALOGI("%s op %d", __func__, opcode);
 
 	switch (opcode) {
 	case BT_VND_OP_POWER_CTRL:
@@ -137,12 +141,14 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 		break;
 	}
 
+	ALOGI("%s op %d retval %d", __func__, opcode, retval);
+
 	return retval;
 }
 
 static void bt_vendor_cleanup( void )
 {
-	ALOGI("cleanup");
+	ALOGI("%s", __func__);
 
 	bt_vendor_callbacks = NULL;
 }
