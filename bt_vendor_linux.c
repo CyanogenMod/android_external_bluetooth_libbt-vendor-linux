@@ -126,7 +126,8 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 		break;
 
         case BT_VND_OP_GET_LPM_IDLE_TIMEOUT:
-		retval = -1;
+		*((uint32_t *)param) = 3000;
+		retval = 0;
 		break;
 
 	case BT_VND_OP_LPM_SET_MODE:
