@@ -23,6 +23,7 @@
 #include "bt_vendor_lib.h"
 #include <utils/Log.h>
 #include <sys/socket.h>
+#include <cutils/properties.h>
 
 #define BTPROTO_HCI	1
 
@@ -37,9 +38,12 @@ struct sockaddr_hci {
 static const bt_vendor_callbacks_t *bt_vendor_callbacks = NULL;
 static unsigned char bt_vendor_local_bdaddr[6] = { 0x00, };
 static int bt_vendor_fd = -1;
+static int hci_interface = 0;
 
 static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *local_bdaddr)
 {
+	char prop_value[PROPERTY_VALUE_MAX];
+
 	ALOGI("%s", __func__);
 
 	if (p_cb == NULL) {
@@ -50,6 +54,18 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 	bt_vendor_callbacks = p_cb;
 
 	memcpy(bt_vendor_local_bdaddr, local_bdaddr, sizeof(bt_vendor_local_bdaddr));
+
+	property_get("bluetooth.interface", prop_value, "0");
+
+	errno = 0;
+	if (memcmp(prop_value, "hci", 3))
+		hci_interface = strtol(prop_value, (char **)NULL, 10);
+	else
+		hci_interface = strtol(prop_value + 3, (char **)NULL, 10);
+	if (errno)
+		hci_interface = 0;
+
+	ALOGI("Using interface hci%d", hci_interface);
 
 	return 0;
 }
@@ -70,7 +86,7 @@ static int bt_vendor_open(void *param)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.hci_family = AF_BLUETOOTH;
-	addr.hci_dev = 0;
+	addr.hci_dev = hci_interface;
 	addr.hci_channel = HCI_CHANNEL_USER;
 
 	if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
