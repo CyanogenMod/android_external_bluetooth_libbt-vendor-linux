@@ -21,6 +21,7 @@
 #include <errno.h>
 
 #include "bt_vendor_lib.h"
+#include "bt_tm.h"
 #include <utils/Log.h>
 #include <sys/socket.h>
 #include <cutils/properties.h>
@@ -46,8 +47,11 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 
 	ALOGI("%s", __func__);
 
+	bt_tm_set_intf(hci_interface);
+
 	if (p_cb == NULL) {
 		ALOGE("init failed with no user callbacks!");
+		BTTM_REPORT("init_no_callback");
 		return -1;
 	}
 
@@ -81,6 +85,7 @@ static int bt_vendor_open(void *param)
 	fd = socket(AF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
 	if (fd < 0) {
 		ALOGE("socket create error %s", strerror(errno));
+		BTTM_REPORT("socket_create");
 		return -1;
 	}
 
@@ -91,6 +96,7 @@ static int bt_vendor_open(void *param)
 
 	if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
 		ALOGE("socket bind error %s", strerror(errno));
+		BTTM_REPORT("socket_bind");
 		close(fd);
 		return -1;
 	}
