@@ -19,6 +19,7 @@
 #define LOG_TAG "bt_vendor"
 
 #include <errno.h>
+#include <stdlib.h>
 
 #include "bt_vendor_lib.h"
 #include "bt_tm.h"
