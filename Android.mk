@@ -10,8 +10,7 @@ LOCAL_SRC_FILES := \
         bt_vendor_linux.c
 
 LOCAL_C_INCLUDES += \
-        $(BDROID_DIR)/hci/include \
-        $(LOCAL_PATH)/libbt-tm
+        $(BDROID_DIR)/hci/include
 
 LOCAL_SHARED_LIBRARIES := \
         libcutils \
