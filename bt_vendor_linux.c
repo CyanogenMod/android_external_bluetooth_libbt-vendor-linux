@@ -22,10 +22,10 @@
 #include <stdlib.h>
 
 #include "bt_vendor_lib.h"
+#include "bt_tm.h"
 #include <utils/Log.h>
 #include <sys/socket.h>
 #include <cutils/properties.h>
-#include <libbttm/bt_tm.h>
 
 #define BTPROTO_HCI	1
 
