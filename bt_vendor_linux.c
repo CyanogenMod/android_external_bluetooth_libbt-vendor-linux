@@ -20,6 +20,8 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <stdint.h>
 
 #include "bt_vendor_lib.h"
 #include <utils/Log.h>
@@ -27,6 +29,11 @@
 #include <cutils/properties.h>
 
 #define BTPROTO_HCI	1
+#define HCI_CHANNEL_USER	1
+
+#define RFKILL_DIR	"/sys/class/rfkill"
+#define RFKILL_TYPE_BLUETOOTH	2
+#define RFKILL_OP_CHANGE_ALL	3
 
 struct sockaddr_hci {
 	sa_family_t	hci_family;
@@ -34,12 +41,18 @@ struct sockaddr_hci {
 	unsigned short  hci_channel;
 };
 
-#define HCI_CHANNEL_USER	1
+struct rfkill_event {
+	uint32_t idx;
+	uint8_t  type;
+	uint8_t  op;
+	uint8_t  soft, hard;
+} __attribute__((packed));
 
 static const bt_vendor_callbacks_t *bt_vendor_callbacks = NULL;
 static unsigned char bt_vendor_local_bdaddr[6] = { 0x00, };
 static int bt_vendor_fd = -1;
 static int hci_interface = 0;
+static int rfkill_en = 0;
 
 static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *local_bdaddr)
 {
@@ -67,6 +80,12 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 		hci_interface = 0;
 
 	ALOGI("Using interface hci%d", hci_interface);
+
+	property_get("bluetooth.rfkill", prop_value, "0");
+
+	rfkill_en = atoi(prop_value);
+	if (rfkill_en)
+		ALOGI("RFKILL enabled");
 
 	return 0;
 }
@@ -110,9 +129,41 @@ static int bt_vendor_open(void *param)
 
 static int bt_vendor_close(void *param)
 {
+	ALOGI("%s", __func__);
+
 	close(bt_vendor_fd);
 	bt_vendor_fd = -1;
 
+	return 0;
+}
+
+static int bt_vendor_rfkill(int block)
+{
+	struct rfkill_event event;
+	int fd, len;
+
+	ALOGI("%s", __func__);
+
+	fd = open("/dev/rfkill", O_WRONLY);
+	if (fd < 0) {
+		ALOGE("Unable to open /dev/rfkill");
+		return -1;
+	}
+
+	memset(&event, 0, sizeof(struct rfkill_event));
+	event.op = RFKILL_OP_CHANGE_ALL;
+	event.type = RFKILL_TYPE_BLUETOOTH;
+	event.hard = block;
+	event.soft = block;
+
+	len = write(fd, &event, sizeof(event));
+	if (len < 0) {
+		ALOGE("Failed to change rfkill state");
+		close(fd);
+		return 1;
+	}
+
+	close(fd);
 	return 0;
 }
 
@@ -124,6 +175,14 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 
 	switch (opcode) {
 	case BT_VND_OP_POWER_CTRL:
+		if (!rfkill_en || !param)
+			break;
+
+		if (*((int*)param) == BT_VND_PWR_ON)
+			retval = bt_vendor_rfkill(0);
+		else
+			retval = bt_vendor_rfkill(1);
+
 		break;
 
 	case BT_VND_OP_FW_CFG:
