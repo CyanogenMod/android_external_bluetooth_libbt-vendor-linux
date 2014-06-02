@@ -22,18 +22,31 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <poll.h>
+
+#include <sys/socket.h>
+#include <sys/ioctl.h>
 
 #include "bt_vendor_lib.h"
 #include <utils/Log.h>
-#include <sys/socket.h>
 #include <cutils/properties.h>
 
 #define BTPROTO_HCI	1
 #define HCI_CHANNEL_USER	1
+#define HCI_CHANNEL_CONTROL	3
+#define HCI_DEV_NONE	0xffff
 
 #define RFKILL_DIR	"/sys/class/rfkill"
 #define RFKILL_TYPE_BLUETOOTH	2
 #define RFKILL_OP_CHANGE_ALL	3
+
+#define MGMT_OP_INDEX_LIST	0x0003
+#define MGMT_EV_INDEX_ADDED	0x0004
+#define MGMT_EV_COMMAND_COMP	0x0001
+#define MGMT_EV_SIZE_MAX	1024
+#define MGMT_EV_POLL_TIMEOUT	5 /* 5s */
+
+#define IOCTL_HCIDEVDOWN	_IOW('H', 202, int)
 
 struct sockaddr_hci {
 	sa_family_t	hci_family;
@@ -46,6 +59,20 @@ struct rfkill_event {
 	uint8_t  type;
 	uint8_t  op;
 	uint8_t  soft, hard;
+} __attribute__((packed));
+
+struct mgmt_pkt {
+        uint16_t opcode;
+        uint16_t index;
+        uint16_t len;
+        uint8_t data[MGMT_EV_SIZE_MAX];
+} __attribute__((packed));
+
+struct mgmt_event_read_index {
+	uint16_t cc_opcode;
+	uint8_t status;
+	uint16_t num_intf;
+	uint16_t index[0];
 } __attribute__((packed));
 
 static const bt_vendor_callbacks_t *bt_vendor_callbacks = NULL;
@@ -90,6 +117,92 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 	return 0;
 }
 
+static int bt_vendor_wait_hcidev(void)
+{
+	struct sockaddr_hci addr;
+        struct pollfd fds[1];
+	struct mgmt_pkt ev;
+	int fd;
+	int ret = 0;
+
+	ALOGI("%s", __func__);
+
+	fd = socket(PF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
+	if (fd < 0) {
+		ALOGE("Bluetooth socket error: %s", strerror(errno));
+		return -1;
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.hci_family = AF_BLUETOOTH;
+	addr.hci_dev = HCI_DEV_NONE;
+	addr.hci_channel = HCI_CHANNEL_CONTROL;
+
+	if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		ALOGE("HCI Channel Control: %s", strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	fds[0].fd = fd;
+	fds[0].events = POLLIN;
+
+	/* Read Controller Index List Command */
+	ev.opcode = MGMT_OP_INDEX_LIST;
+	ev.index = HCI_DEV_NONE;
+	ev.len = 0;
+	if (write(fd, &ev, 6) != 6) {
+		ALOGE("Unable to write mgmt command: %s", strerror(errno));
+		goto end;
+	}
+
+	while (1) {
+		int ret = poll(fds, 1, MGMT_EV_POLL_TIMEOUT * 1000);
+		if (ret == -1) {
+			ALOGE("Poll error: %s", strerror(errno));
+			ret = -1;
+			break;
+		} else if ( ret == 0) {
+			ALOGE("Timeout, no HCI device detected");
+			ret = -1;
+			break;
+		}
+
+		if (fds[0].revents & POLLIN) {
+			ret = read(fd, &ev, sizeof(struct mgmt_pkt));
+			if (ret < 0) {
+				ALOGE("Error reading control channel");
+				ret = -1;
+				break;
+			}
+
+			if (ev.opcode == MGMT_EV_INDEX_ADDED &&
+			    ev.index == hci_interface) {
+				goto end;
+			} else if (ev.opcode == MGMT_EV_COMMAND_COMP) {
+				struct mgmt_event_read_index *cc;
+				int found = 0;
+				int i;
+
+				cc = (struct mgmt_event_read_index *)ev.data;
+
+				if ((cc->cc_opcode != MGMT_OP_INDEX_LIST)
+				    || (cc->status != 0))
+					continue;
+
+				for (i = 0; i < cc->num_intf; i++) {
+					if (cc->index[i] == hci_interface)
+						goto end;
+				}
+			}
+		}
+	}
+
+end:
+	close(fd);
+	return ret;
+}
+
 static int bt_vendor_open(void *param)
 {
 	int (*fd_array)[] = (int (*) []) param;
@@ -108,6 +221,13 @@ static int bt_vendor_open(void *param)
 	addr.hci_family = AF_BLUETOOTH;
 	addr.hci_dev = hci_interface;
 	addr.hci_channel = HCI_CHANNEL_USER;
+
+	if (bt_vendor_wait_hcidev())
+		ALOGE("HCI interface (%d) not found", hci_interface);
+
+	/* Force interface down to use HCI user channel */
+	if (ioctl(fd, IOCTL_HCIDEVDOWN, hci_interface))
+		ALOGE("HCIDEVDOWN ioctl error: %s", strerror(errno));
 
 	if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
 		ALOGE("socket bind error %s", strerror(errno));
