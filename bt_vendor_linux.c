@@ -80,6 +80,7 @@ static unsigned char bt_vendor_local_bdaddr[6] = { 0x00, };
 static int bt_vendor_fd = -1;
 static int hci_interface = 0;
 static int rfkill_en = 0;
+static int bt_hwcfg_en = 0;
 
 static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *local_bdaddr)
 {
@@ -113,6 +114,10 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 	rfkill_en = atoi(prop_value);
 	if (rfkill_en)
 		ALOGI("RFKILL enabled");
+
+	bt_hwcfg_en = property_get("bluetooth.hwcfg", prop_value, NULL) > 0 ? 1 : 0;
+	if (bt_hwcfg_en)
+		ALOGI("HWCFG enabled");
 
 	return 0;
 }
@@ -201,6 +206,25 @@ static int bt_vendor_wait_hcidev(void)
 end:
 	close(fd);
 	return ret;
+}
+
+static int bt_vendor_hw_cfg(int stop)
+{
+	if (!bt_hwcfg_en)
+		return 0;
+
+	if (stop) {
+		if (property_set("bluetooth.hwcfg", "stop") < 0) {
+			ALOGE("%s cannot stop btcfg service via prop", __func__);
+			return 1;
+		}
+	} else {
+		if (property_set("bluetooth.hwcfg", "start") < 0) {
+			ALOGE("%s cannot start btcfg service via prop", __func__);
+			return 1;
+		}
+	}
+	return 0;
 }
 
 static int bt_vendor_open(void *param)
@@ -298,10 +322,16 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 		if (!rfkill_en || !param)
 			break;
 
-		if (*((int*)param) == BT_VND_PWR_ON)
+		if (*((int*)param) == BT_VND_PWR_ON) {
 			retval = bt_vendor_rfkill(0);
-		else
-			retval = bt_vendor_rfkill(1);
+			if (!retval)
+				retval = bt_vendor_hw_cfg(0);
+		}
+		else {
+			retval = bt_vendor_hw_cfg(1);
+			if (!retval)
+				retval = bt_vendor_rfkill(1);
+		}
 
 		break;
 
