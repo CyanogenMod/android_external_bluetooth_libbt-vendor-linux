@@ -36,7 +36,6 @@
 #define HCI_CHANNEL_CONTROL	3
 #define HCI_DEV_NONE	0xffff
 
-#define RFKILL_DIR	"/sys/class/rfkill"
 #define RFKILL_TYPE_BLUETOOTH	2
 #define RFKILL_OP_CHANGE_ALL	3
 
@@ -49,9 +48,9 @@
 #define IOCTL_HCIDEVDOWN	_IOW('H', 202, int)
 
 struct sockaddr_hci {
-	sa_family_t	hci_family;
-	unsigned short	hci_dev;
-	unsigned short  hci_channel;
+	sa_family_t    hci_family;
+	unsigned short hci_dev;
+	unsigned short hci_channel;
 };
 
 struct rfkill_event {
@@ -65,18 +64,18 @@ struct mgmt_pkt {
         uint16_t opcode;
         uint16_t index;
         uint16_t len;
-        uint8_t data[MGMT_EV_SIZE_MAX];
+        uint8_t  data[MGMT_EV_SIZE_MAX];
 } __attribute__((packed));
 
 struct mgmt_event_read_index {
 	uint16_t cc_opcode;
-	uint8_t status;
+	uint8_t  status;
 	uint16_t num_intf;
 	uint16_t index[0];
 } __attribute__((packed));
 
 static const bt_vendor_callbacks_t *bt_vendor_callbacks = NULL;
-static unsigned char bt_vendor_local_bdaddr[6] = { 0x00, };
+static unsigned char bt_vendor_local_bdaddr[6];
 static int bt_vendor_fd = -1;
 static int hci_interface = 0;
 static int rfkill_en = 0;
@@ -181,7 +180,6 @@ static int bt_vendor_wait_hcidev(void)
 				goto end;
 			} else if (ev.opcode == MGMT_EV_COMMAND_COMP) {
 				struct mgmt_event_read_index *cc;
-				int found = 0;
 				int i;
 
 				cc = (struct mgmt_event_read_index *)ev.data;
