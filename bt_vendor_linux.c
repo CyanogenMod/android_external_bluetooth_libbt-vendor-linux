@@ -43,7 +43,7 @@
 #define MGMT_EV_INDEX_ADDED	0x0004
 #define MGMT_EV_COMMAND_COMP	0x0001
 #define MGMT_EV_SIZE_MAX	1024
-#define MGMT_EV_POLL_TIMEOUT	5 /* 5s */
+#define MGMT_EV_POLL_TIMEOUT	3500 /* 3500ms */
 
 #define IOCTL_HCIDEVDOWN	_IOW('H', 202, int)
 
@@ -161,7 +161,7 @@ static int bt_vendor_wait_hcidev(void)
 	}
 
 	while (1) {
-		int ret = poll(fds, 1, MGMT_EV_POLL_TIMEOUT * 1000);
+		int ret = poll(fds, 1, MGMT_EV_POLL_TIMEOUT);
 		if (ret == -1) {
 			ALOGE("Poll error: %s", strerror(errno));
 			ret = -1;
@@ -228,7 +228,6 @@ static int bt_vendor_hw_cfg(int stop)
 static int bt_vendor_open(void *param)
 {
 	int (*fd_array)[] = (int (*) []) param;
-	struct sockaddr_hci addr;
 	int fd;
 
 	ALOGI("%s", __func__);
@@ -236,24 +235,6 @@ static int bt_vendor_open(void *param)
 	fd = socket(AF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
 	if (fd < 0) {
 		ALOGE("socket create error %s", strerror(errno));
-		return -1;
-	}
-
-	memset(&addr, 0, sizeof(addr));
-	addr.hci_family = AF_BLUETOOTH;
-	addr.hci_dev = hci_interface;
-	addr.hci_channel = HCI_CHANNEL_USER;
-
-	if (bt_vendor_wait_hcidev())
-		ALOGE("HCI interface (%d) not found", hci_interface);
-
-	/* Force interface down to use HCI user channel */
-	if (ioctl(fd, IOCTL_HCIDEVDOWN, hci_interface))
-		ALOGE("HCIDEVDOWN ioctl error: %s", strerror(errno));
-
-	if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		ALOGE("socket bind error %s", strerror(errno));
-		close(fd);
 		return -1;
 	}
 
@@ -309,6 +290,50 @@ static int bt_vendor_rfkill(int block)
 	return 0;
 }
 
+/* TODO: fw config should thread the device waiting and return immedialty */
+static void bt_vendor_fw_cfg(void)
+{
+	struct sockaddr_hci addr;
+	int fd = bt_vendor_fd;
+
+	ALOGI("%s", __func__);
+
+	if (!fd)
+		goto failure;
+
+	memset(&addr, 0, sizeof(addr));
+        addr.hci_family = AF_BLUETOOTH;
+        addr.hci_dev = hci_interface;
+        addr.hci_channel = HCI_CHANNEL_USER;
+
+        if (bt_vendor_wait_hcidev()) {
+                ALOGE("HCI interface (%d) not found", hci_interface);
+		goto failure;
+	}
+
+        /* Force interface down to use HCI user channel */
+        if (ioctl(fd, IOCTL_HCIDEVDOWN, hci_interface)) {
+                ALOGE("HCIDEVDOWN ioctl error: %s", strerror(errno));
+		goto failure;
+	}
+
+        if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+                ALOGE("socket bind error %s", strerror(errno));
+                close(fd);
+                goto failure;
+        }
+
+	ALOGI("HCI device ready");
+
+	bt_vendor_callbacks->fwcfg_cb(BT_VND_OP_RESULT_SUCCESS);
+
+	return;
+
+failure:
+	ALOGE("Hardware Config Error");
+	bt_vendor_callbacks->fwcfg_cb(BT_VND_OP_RESULT_FAIL);
+}
+
 static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 {
 	int retval = 0;
@@ -334,7 +359,7 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 		break;
 
 	case BT_VND_OP_FW_CFG:
-		bt_vendor_callbacks->fwcfg_cb(BT_VND_OP_RESULT_SUCCESS);
+		bt_vendor_fw_cfg();
 		break;
 
 	case BT_VND_OP_SCO_CFG:
