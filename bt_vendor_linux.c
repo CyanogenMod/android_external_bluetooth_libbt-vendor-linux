@@ -161,20 +161,20 @@ static int bt_vendor_wait_hcidev(void)
 	}
 
 	while (1) {
-		int ret = poll(fds, 1, MGMT_EV_POLL_TIMEOUT);
-		if (ret == -1) {
+		int n = poll(fds, 1, MGMT_EV_POLL_TIMEOUT);
+		if (n == -1) {
 			ALOGE("Poll error: %s", strerror(errno));
 			ret = -1;
 			break;
-		} else if ( ret == 0) {
+		} else if (n == 0) {
 			ALOGE("Timeout, no HCI device detected");
 			ret = -1;
 			break;
 		}
 
 		if (fds[0].revents & POLLIN) {
-			ret = read(fd, &ev, sizeof(struct mgmt_pkt));
-			if (ret < 0) {
+			n = read(fd, &ev, sizeof(struct mgmt_pkt));
+			if (n < 0) {
 				ALOGE("Error reading control channel");
 				ret = -1;
 				break;
