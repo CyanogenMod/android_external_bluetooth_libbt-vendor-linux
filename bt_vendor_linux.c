@@ -79,6 +79,7 @@ static unsigned char bt_vendor_local_bdaddr[6];
 static int bt_vendor_fd = -1;
 static int hci_interface = 0;
 static int rfkill_en = 0;
+static int bt_hwcfg_en = 0;
 
 static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *local_bdaddr)
 {
@@ -113,6 +114,114 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 	if (rfkill_en)
 		ALOGI("RFKILL enabled");
 
+	bt_hwcfg_en = property_get("bluetooth.hwcfg", prop_value, NULL) > 0 ? 1 : 0;
+	if (bt_hwcfg_en)
+		ALOGI("HWCFG enabled");
+
+	return 0;
+}
+
+static int bt_vendor_wait_hcidev(void)
+{
+	struct sockaddr_hci addr;
+        struct pollfd fds[1];
+	struct mgmt_pkt ev;
+	int fd;
+	int ret = 0;
+
+	ALOGI("%s", __func__);
+
+	fd = socket(PF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
+	if (fd < 0) {
+		ALOGE("Bluetooth socket error: %s", strerror(errno));
+		return -1;
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.hci_family = AF_BLUETOOTH;
+	addr.hci_dev = HCI_DEV_NONE;
+	addr.hci_channel = HCI_CHANNEL_CONTROL;
+
+	if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		ALOGE("HCI Channel Control: %s", strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	fds[0].fd = fd;
+	fds[0].events = POLLIN;
+
+	/* Read Controller Index List Command */
+	ev.opcode = MGMT_OP_INDEX_LIST;
+	ev.index = HCI_DEV_NONE;
+	ev.len = 0;
+	if (write(fd, &ev, 6) != 6) {
+		ALOGE("Unable to write mgmt command: %s", strerror(errno));
+		goto end;
+	}
+
+	while (1) {
+		int ret = poll(fds, 1, MGMT_EV_POLL_TIMEOUT * 1000);
+		if (ret == -1) {
+			ALOGE("Poll error: %s", strerror(errno));
+			ret = -1;
+			break;
+		} else if ( ret == 0) {
+			ALOGE("Timeout, no HCI device detected");
+			ret = -1;
+			break;
+		}
+
+		if (fds[0].revents & POLLIN) {
+			ret = read(fd, &ev, sizeof(struct mgmt_pkt));
+			if (ret < 0) {
+				ALOGE("Error reading control channel");
+				ret = -1;
+				break;
+			}
+
+			if (ev.opcode == MGMT_EV_INDEX_ADDED &&
+			    ev.index == hci_interface) {
+				goto end;
+			} else if (ev.opcode == MGMT_EV_COMMAND_COMP) {
+				struct mgmt_event_read_index *cc;
+				int i;
+
+				cc = (struct mgmt_event_read_index *)ev.data;
+
+				if ((cc->cc_opcode != MGMT_OP_INDEX_LIST)
+				    || (cc->status != 0))
+					continue;
+
+				for (i = 0; i < cc->num_intf; i++) {
+					if (cc->index[i] == hci_interface)
+						goto end;
+				}
+			}
+		}
+	}
+
+end:
+	close(fd);
+	return ret;
+}
+
+static int bt_vendor_hw_cfg(int stop)
+{
+	if (!bt_hwcfg_en)
+		return 0;
+
+	if (stop) {
+		if (property_set("bluetooth.hwcfg", "stop") < 0) {
+			ALOGE("%s cannot stop btcfg service via prop", __func__);
+			return 1;
+		}
+	} else {
+		if (property_set("bluetooth.hwcfg", "start") < 0) {
+			ALOGE("%s cannot start btcfg service via prop", __func__);
+			return 1;
+		}
+	}
 	return 0;
 }
 
@@ -296,10 +405,16 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 		if (!rfkill_en || !param)
 			break;
 
-		if (*((int*)param) == BT_VND_PWR_ON)
+		if (*((int*)param) == BT_VND_PWR_ON) {
 			retval = bt_vendor_rfkill(0);
-		else
-			retval = bt_vendor_rfkill(1);
+			if (!retval)
+				retval = bt_vendor_hw_cfg(0);
+		}
+		else {
+			retval = bt_vendor_hw_cfg(1);
+			if (!retval)
+				retval = bt_vendor_rfkill(1);
+		}
 
 		break;
 
