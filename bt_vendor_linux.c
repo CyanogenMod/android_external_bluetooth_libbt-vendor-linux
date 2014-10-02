@@ -43,7 +43,7 @@
 #define MGMT_EV_INDEX_ADDED	0x0004
 #define MGMT_EV_COMMAND_COMP	0x0001
 #define MGMT_EV_SIZE_MAX	1024
-#define MGMT_EV_POLL_TIMEOUT	3500 /* 3500ms */
+#define MGMT_EV_POLL_TIMEOUT	3000 /* 3000ms */
 
 #define IOCTL_HCIDEVDOWN	_IOW('H', 202, int)
 
@@ -124,7 +124,7 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 static int bt_vendor_wait_hcidev(void)
 {
 	struct sockaddr_hci addr;
-        struct pollfd fds[1];
+	struct pollfd fds[1];
 	struct mgmt_pkt ev;
 	int fd;
 	int ret = 0;
@@ -157,6 +157,7 @@ static int bt_vendor_wait_hcidev(void)
 	ev.len = 0;
 	if (write(fd, &ev, 6) != 6) {
 		ALOGE("Unable to write mgmt command: %s", strerror(errno));
+		ret = -1;
 		goto end;
 	}
 
