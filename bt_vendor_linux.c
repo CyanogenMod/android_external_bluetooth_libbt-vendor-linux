@@ -253,10 +253,14 @@ static int bt_vendor_open(void *param)
 
 static int bt_vendor_close(void *param)
 {
+	(void)(param);
+
 	ALOGI("%s", __func__);
 
-	close(bt_vendor_fd);
-	bt_vendor_fd = -1;
+	if (bt_vendor_fd != -1) {
+		close(bt_vendor_fd);
+		bt_vendor_fd = -1;
+	}
 
 	return 0;
 }
@@ -299,8 +303,10 @@ static void bt_vendor_fw_cfg(void)
 
 	ALOGI("%s", __func__);
 
-	if (!fd)
+	if (fd == -1) {
+		ALOGE("bt_vendor_fd: %s", strerror(EBADF));
 		goto failure;
+	}
 
 	memset(&addr, 0, sizeof(addr));
         addr.hci_family = AF_BLUETOOTH;
@@ -320,7 +326,6 @@ static void bt_vendor_fw_cfg(void)
 
         if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
                 ALOGE("socket bind error %s", strerror(errno));
-                close(fd);
                 goto failure;
         }
 
