@@ -361,6 +361,10 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 	case BT_VND_OP_LPM_WAKE_SET_STATE:
 		break;
 
+	case BT_VND_OP_SET_AUDIO_STATE:
+		bt_vendor_callbacks->audio_state_cb(BT_VND_OP_RESULT_SUCCESS);
+		break;
+
 	case BT_VND_OP_EPILOG:
 		bt_vendor_callbacks->epilog_cb(BT_VND_OP_RESULT_SUCCESS);
 		break;
