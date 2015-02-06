@@ -121,6 +121,25 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 	return 0;
 }
 
+static int bt_vendor_hw_cfg(int stop)
+{
+	if (!bt_hwcfg_en)
+		return 0;
+
+	if (stop) {
+		if (property_set("bluetooth.hwcfg", "stop") < 0) {
+			ALOGE("%s cannot stop btcfg service via prop", __func__);
+			return 1;
+		}
+	} else {
+		if (property_set("bluetooth.hwcfg", "start") < 0) {
+			ALOGE("%s cannot start btcfg service via prop", __func__);
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static int bt_vendor_wait_hcidev(void)
 {
 	struct sockaddr_hci addr;
@@ -205,25 +224,6 @@ static int bt_vendor_wait_hcidev(void)
 end:
 	close(fd);
 	return ret;
-}
-
-static int bt_vendor_hw_cfg(int stop)
-{
-	if (!bt_hwcfg_en)
-		return 0;
-
-	if (stop) {
-		if (property_set("bluetooth.hwcfg", "stop") < 0) {
-			ALOGE("%s cannot stop btcfg service via prop", __func__);
-			return 1;
-		}
-	} else {
-		if (property_set("bluetooth.hwcfg", "start") < 0) {
-			ALOGE("%s cannot start btcfg service via prop", __func__);
-			return 1;
-		}
-	}
-	return 0;
 }
 
 static int bt_vendor_open(void *param)
@@ -390,6 +390,10 @@ static int bt_vendor_op(bt_vendor_opcode_t opcode, void *param)
 		break;
 
 	case BT_VND_OP_LPM_WAKE_SET_STATE:
+		break;
+
+	case BT_VND_OP_SET_AUDIO_STATE:
+		bt_vendor_callbacks->audio_state_cb(BT_VND_OP_RESULT_SUCCESS);
 		break;
 
 	case BT_VND_OP_EPILOG:
