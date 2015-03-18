@@ -47,6 +47,11 @@
 
 #define IOCTL_HCIDEVDOWN	_IOW('H', 202, int)
 
+#ifdef USE_CELLULAR_COEX
+int hci_bind_client_init(void);
+int hci_bind_client_cleanup(void);
+#endif
+
 struct sockaddr_hci {
 	sa_family_t    hci_family;
 	unsigned short hci_dev;
@@ -74,7 +79,7 @@ struct mgmt_event_read_index {
 	uint16_t index[0];
 } __attribute__((packed));
 
-static const bt_vendor_callbacks_t *bt_vendor_callbacks = NULL;
+const bt_vendor_callbacks_t *bt_vendor_callbacks = NULL;
 static unsigned char bt_vendor_local_bdaddr[6];
 static int bt_vendor_fd = -1;
 static int hci_interface = 0;
@@ -117,6 +122,10 @@ static int bt_vendor_init(const bt_vendor_callbacks_t *p_cb, unsigned char *loca
 	bt_hwcfg_en = property_get("bluetooth.hwcfg", prop_value, NULL) > 0 ? 1 : 0;
 	if (bt_hwcfg_en)
 		ALOGI("HWCFG enabled");
+
+#ifdef USE_CELLULAR_COEX
+	hci_bind_client_init();
+#endif
 
 	return 0;
 }
@@ -411,6 +420,10 @@ static void bt_vendor_cleanup( void )
 	ALOGI("%s", __func__);
 
 	bt_vendor_callbacks = NULL;
+
+#ifdef USE_CELLULAR_COEX
+	hci_bind_client_cleanup();
+#endif
 }
 
 const bt_vendor_interface_t BLUETOOTH_VENDOR_LIB_INTERFACE = {

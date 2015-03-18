@@ -15,6 +15,19 @@ LOCAL_C_INCLUDES += \
 LOCAL_SHARED_LIBRARIES := \
         libcutils
 
+ifeq ($(strip $(BOARD_USE_CELLULAR_COEX)),true)
+    LOCAL_REQUIRED_MODULES += libbtvendorcellcoex-client
+       LOCAL_SRC_FILES += hci_service.c
+       LOCAL_CFLAGS += -DUSE_CELLULAR_COEX
+    LOCAL_SHARED_LIBRARIES += \
+               libstlport \
+               libbinder \
+               libutils \
+               libandroid_runtime \
+               liblog \
+               libbtvendorcellcoex-client
+endif
+
 LOCAL_MODULE := libbt-vendor
 LOCAL_MODULE_TAGS := optional
 
